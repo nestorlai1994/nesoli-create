@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM docker.io/library/golang:1.25-alpine AS builder
 WORKDIR /app
 ENV CGO_ENABLED=0 GOOS=linux
 
@@ -12,7 +12,7 @@ COPY . .
 RUN go build -ldflags="-s -w" -o nesoli-create .
 
 # Runtime stage
-FROM alpine:3.20
+FROM docker.io/library/alpine:3.20
 WORKDIR /app
 RUN addgroup -S nesoli && adduser -S nesoli -G nesoli
 COPY --from=builder /app/nesoli-create .
