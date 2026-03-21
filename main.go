@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
+	"github.com/nestorlai1994/nesoli-create/markdown"
 )
 
 const version = "0.1.0"
@@ -35,6 +36,35 @@ func main() {
 			"service": "nesoli-create",
 			"version": version,
 		})
+	})
+
+	// Markdown render endpoint
+	app.Post("/api/render", func(c *fiber.Ctx) error {
+		type RenderRequest struct {
+			Markdown string `json:"markdown"`
+		}
+
+		var req RenderRequest
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "invalid request body",
+			})
+		}
+
+		if req.Markdown == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "markdown field is required",
+			})
+		}
+
+		result, err := markdown.Render([]byte(req.Markdown))
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "failed to render markdown",
+			})
+		}
+
+		return c.JSON(result)
 	})
 
 	// Graceful shutdown
