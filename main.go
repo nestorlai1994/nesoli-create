@@ -9,19 +9,30 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
+	"github.com/nestorlai1994/nesoli-create/db"
+	"github.com/nestorlai1994/nesoli-create/handlers"
 	"github.com/nestorlai1994/nesoli-create/markdown"
 )
 
 const version = "0.1.0"
 
 func main() {
-	// Load .env if present (dev convenience)
 	_ = godotenv.Load()
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}
+
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		log.Fatal("DATABASE_URL must be set")
+	}
+
+	pool := db.NewPool(dbURL)
+	defer pool.Close()
+
+	noteHandler := &handlers.NoteHandler{Pool: pool}
 
 	app := fiber.New(fiber.Config{
 		AppName:               "nesoli-create v" + version,
@@ -66,6 +77,14 @@ func main() {
 
 		return c.JSON(result)
 	})
+
+	// Note CRUD endpoints
+	notes := app.Group("/api/notes")
+	notes.Post("/", noteHandler.Create)
+	notes.Get("/", noteHandler.List)
+	notes.Get("/:slug", noteHandler.GetBySlug)
+	notes.Put("/:slug", noteHandler.Update)
+	notes.Delete("/:slug", noteHandler.Delete)
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
