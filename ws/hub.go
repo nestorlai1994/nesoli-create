@@ -3,7 +3,6 @@ package ws
 import (
 	"encoding/json"
 	"log"
-	"sync"
 )
 
 // Event is the JSON envelope sent to all connected clients.
@@ -13,12 +12,12 @@ type Event struct {
 }
 
 // Hub manages WebSocket client registration and fan-out broadcasting.
+// All state is owned exclusively by the Run() goroutine — no mutex needed.
 type Hub struct {
 	clients    map[*Client]bool
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan []byte
-	mu         sync.RWMutex
 }
 
 func NewHub() *Hub {
@@ -35,39 +34,30 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
-			h.mu.Lock()
 			h.clients[client] = true
-			count := len(h.clients)
-			h.mu.Unlock()
-			log.Printf("[ws] client connected (%d total)", count)
+			log.Printf("[ws] client connected (%d total)", len(h.clients))
 
 		case client := <-h.unregister:
-			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
 			}
-			count := len(h.clients)
-			h.mu.Unlock()
-			log.Printf("[ws] client disconnected (%d total)", count)
+			log.Printf("[ws] client disconnected (%d total)", len(h.clients))
 
 		case message := <-h.broadcast:
-			h.mu.RLock()
+			var stale []*Client
 			for client := range h.clients {
 				select {
 				case client.send <- message:
 				default:
-					// Slow consumer — drop the client
-					h.mu.RUnlock()
-					h.mu.Lock()
-					delete(h.clients, client)
-					close(client.send)
-					h.mu.Unlock()
-					h.mu.RLock()
-					log.Printf("[ws] dropped slow client")
+					stale = append(stale, client)
 				}
 			}
-			h.mu.RUnlock()
+			for _, client := range stale {
+				delete(h.clients, client)
+				close(client.send)
+				log.Printf("[ws] dropped slow client (%d total)", len(h.clients))
+			}
 		}
 	}
 }
