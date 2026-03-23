@@ -6,12 +6,14 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
 	"github.com/nestorlai1994/nesoli-create/db"
 	"github.com/nestorlai1994/nesoli-create/handlers"
 	"github.com/nestorlai1994/nesoli-create/markdown"
+	"github.com/nestorlai1994/nesoli-create/ws"
 )
 
 const version = "0.1.0"
@@ -32,7 +34,10 @@ func main() {
 	pool := db.NewPool(dbURL)
 	defer pool.Close()
 
-	noteHandler := &handlers.NoteHandler{Pool: pool}
+	hub := ws.NewHub()
+	go hub.Run()
+
+	noteHandler := &handlers.NoteHandler{Pool: pool, Hub: hub}
 
 	app := fiber.New(fiber.Config{
 		AppName:               "nesoli-create v" + version,
@@ -85,6 +90,20 @@ func main() {
 	notes.Get("/:slug", noteHandler.GetBySlug)
 	notes.Put("/:slug", noteHandler.Update)
 	notes.Delete("/:slug", noteHandler.Delete)
+
+	// WebSocket endpoint — real-time event stream
+	app.Use("/ws", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+	app.Get("/ws", websocket.New(func(c *websocket.Conn) {
+		client := ws.NewClient(hub, c)
+		hub.Register(client)
+		go client.WritePump()
+		client.ReadPump()
+	}))
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)

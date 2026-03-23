@@ -9,12 +9,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nestorlai1994/nesoli-create/markdown"
 	"github.com/nestorlai1994/nesoli-create/models"
+	"github.com/nestorlai1994/nesoli-create/ws"
 )
 
 const systemUserID = "00000000-0000-0000-0000-000000000001"
 
 type NoteHandler struct {
 	Pool *pgxpool.Pool
+	Hub  *ws.Hub
 }
 
 func (h *NoteHandler) Create(c *fiber.Ctx) error {
@@ -66,6 +68,7 @@ func (h *NoteHandler) Create(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create note: " + err.Error()})
 	}
 
+	h.Hub.BroadcastEvent("note.created", note)
 	return c.Status(fiber.StatusCreated).JSON(note)
 }
 
@@ -232,6 +235,7 @@ func (h *NoteHandler) Update(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "update failed: " + err.Error()})
 	}
 
+	h.Hub.BroadcastEvent("note.updated", note)
 	return c.JSON(note)
 }
 
@@ -249,5 +253,6 @@ func (h *NoteHandler) Delete(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "note not found"})
 	}
 
+	h.Hub.BroadcastEvent("note.deleted", fiber.Map{"slug": slug})
 	return c.SendStatus(fiber.StatusNoContent)
 }
